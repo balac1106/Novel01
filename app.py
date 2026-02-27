@@ -5,13 +5,16 @@
 """
 
 import html
+import random
 import re
 import streamlit as st
+import streamlit.components.v1 as components
 from config.prompts import (
     SYSTEM_INSTRUCTION,
     ACTION_MATRIX,
     ACTION_GROUPS,
     DEFAULT_STATE,
+    BODY_PARTS_體外噴發,
 )
 
 # ----- 頁面設定 -----
@@ -140,7 +143,11 @@ def build_full_prompt(instruction: str) -> str:
 
 def on_action_click(action_id: str):
     """按下動作按鈕：寫入歷史、建 Prompt、可選呼叫 API"""
-    instruction = ACTION_MATRIX.get(action_id, "")
+    if action_id == "體外噴發":
+        part = random.choice(BODY_PARTS_體外噴發)
+        instruction = f"體外噴發，噴發部位：{part}。請描寫在該部位上的噴發與濁液覆蓋的視覺與觸感。"
+    else:
+        instruction = ACTION_MATRIX.get(action_id, "")
     if not instruction:
         return
 
@@ -251,7 +258,20 @@ for group in ACTION_GROUPS:
             if st.button(action_id, key=f"btn_{action_id}", use_container_width=True):
                 on_action_click(action_id)
 
-# ----- 可展開：生成的 Prompt -----
+# ----- 可展開：生成的 Prompt + 複製按鈕 -----
+if st.session_state.last_prompt:
+    # 直接顯示複製按鈕（一點即可複製到剪貼簿）
+    prompt_escaped = html.escape(st.session_state.last_prompt)
+    components.html(
+        f"""
+        <textarea id="promptCopy" style="display:none">{prompt_escaped}</textarea>
+        <button onclick="navigator.clipboard.writeText(document.getElementById('promptCopy').value); this.textContent='已複製！'; setTimeout(() => {{ this.textContent='📋 複製 Prompt'; }}, 2000);"
+            style="padding:0.5rem 1rem; cursor:pointer; border-radius:6px; background:#4a4058; color:#e8dcd0; border:1px solid #3d3548;">
+            📋 複製 Prompt
+        </button>
+        """,
+        height=48,
+    )
 with st.expander("📄 查看／複製「生成的 Prompt」"):
     if st.session_state.last_prompt:
         st.text_area("Prompt（可複製）", value=st.session_state.last_prompt, height=300, disabled=False)
