@@ -4,6 +4,7 @@
 結合故事歷史、動作指令與狀態追蹤，組合成發送給 AI 的 Prompt。
 """
 
+import html
 import re
 import streamlit as st
 from config.prompts import (
@@ -99,8 +100,16 @@ def parse_state_from_response(text: str) -> dict:
     return state
 
 
+def get_system_instruction() -> str:
+    """依側邊欄「模仿風格」替換 SYSTEM_INSTRUCTION 中的 __STYLE__"""
+    style = (st.session_state.get("style_imitation") or "").strip()
+    style_line = f"風格模仿：{style}。" if style else ""
+    return SYSTEM_INSTRUCTION.replace("__STYLE__", style_line)
+
+
 def build_full_prompt(instruction: str) -> str:
     """組合：系統指令 + 故事歷史 + 當前狀態 + 本次動作指令"""
+    system_text = get_system_instruction()
     state = st.session_state.current_state
     state_block = "\n".join(f"- {k}：{v}" for k, v in state.items())
 
@@ -114,7 +123,7 @@ def build_full_prompt(instruction: str) -> str:
     history_text = "\n\n---\n\n".join(user_messages) if user_messages else "（尚無歷史，請從第一個動作開始。）"
 
     full = f"""【系統指令】
-{SYSTEM_INSTRUCTION}
+{system_text}
 
 【當前狀態】
 {state_block}
@@ -150,7 +159,7 @@ def on_action_click(action_id: str):
             response = client.chat.completions.create(
                 model=st.session_state.get("model", "gpt-4o-mini"),
                 messages=[
-                    {"role": "system", "content": SYSTEM_INSTRUCTION},
+                    {"role": "system", "content": get_system_instruction()},
                     {"role": "user", "content": prompt},
                 ],
                 max_tokens=1500,
@@ -189,6 +198,15 @@ with st.sidebar:
         key="model",
     )
 
+    st.subheader("✍️ 模仿風格（選填）")
+    style_imitation = st.text_input(
+        "需要模仿的風格",
+        value=st.session_state.get("style_imitation", ""),
+        key="style_imitation",
+        placeholder="例如：《雯雯》作者、某位作家名、或一段風格描述",
+        help="在此輸入希望 AI 模仿的寫作風格，留空則不特別指定。",
+    )
+
     st.subheader("📋 當前狀態")
     for k, v in st.session_state.current_state.items():
         st.markdown(f"**{k}**：{v}")
@@ -211,9 +229,10 @@ for msg in reversed(st.session_state.story_history):
         break
 
 if last_assistant:
-    # 可選擇只顯示敘事本文（去掉狀態區塊）給閱讀用
+    # 可選擇只顯示敘事本文（去掉狀態區塊）給閱讀用，並跳脫 HTML 避免版面錯亂與 XSS
     display_text = re.sub(r"\n---\s*\n【狀態】.*?---", "\n", last_assistant, flags=re.DOTALL).strip()
-    st.markdown('<div class="narrative-box">' + display_text.replace("\n", "<br>") + "</div>", unsafe_allow_html=True)
+    safe_text = html.escape(display_text).replace("\n", "<br>")
+    st.markdown('<div class="narrative-box">' + safe_text + "</div>", unsafe_allow_html=True)
 else:
     st.markdown(
         '<div class="narrative-box">（尚未產生敘事。請從下方選擇一個動作開始。）</div>',
